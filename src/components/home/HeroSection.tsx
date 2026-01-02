@@ -40,7 +40,7 @@ const HeroSection = () => {
 
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-4">
-              <Link to="/get-involved">
+              <Link to="/donate">
                 <Button variant="hero" size="xl" className="group w-full sm:w-auto">
                   <Heart className="w-5 h-5 mr-2 group-hover:scale-110 transition-transform" />
                   Donate Now

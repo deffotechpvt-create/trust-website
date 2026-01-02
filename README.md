@@ -1,23 +1,3 @@
-# Welcome to your Lovable project
-
-## Project info
-
-**URL**: https://lovable.dev/projects/75e21b6a-6015-410c-b035-09b4adcfc976
-
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/75e21b6a-6015-410c-b035-09b4adcfc976) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
 The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
 
 Follow these steps:
@@ -60,14 +40,59 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
-## How can I deploy this project?
 
-Simply open [Lovable](https://lovable.dev/projects/75e21b6a-6015-410c-b035-09b4adcfc976) and click on Share -> Publish.
+## Backend Integration — Payments
 
-## Can I connect a custom domain to my Lovable project?
+This frontend is ready to connect to a backend payment integration (example: Razorpay). Set `VITE_API_BASE` in your Vite env (for example `.env`) to the backend base URL if your API is hosted separately. By default the frontend calls relative `/api/razorpay/*` endpoints.
 
-Yes, you can!
+Required endpoints (example names and payloads):
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- `POST /api/razorpay/order`
+	- Request JSON: `{ amount: number, currency: string, donationType?: string, paymentMethod?: string }` (amount in smallest currency unit — paise for INR)
+	- Response JSON: `{ orderId: string, amount: number, currency: string, keyId: string }`
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+- `POST /api/razorpay/verify`
+	- Request JSON: the handler response from the Razorpay SDK `{ razorpay_payment_id, razorpay_order_id, razorpay_signature }`
+	- Response: 200 OK on successful verification
+
+Minimal Node/Express example (server-side) — replace with your secure implementation:
+
+```js
+// server/index.js (concept)
+const express = require('express');
+const Razorpay = require('razorpay');
+const crypto = require('crypto');
+const app = express();
+app.use(express.json());
+
+const razor = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
+
+app.post('/api/razorpay/order', async (req, res) => {
+	const { amount } = req.body;
+	const order = await razor.orders.create({ amount, currency: 'INR' });
+	res.json({ orderId: order.id, amount: order.amount, currency: order.currency, keyId: process.env.RAZORPAY_KEY_ID });
+});
+
+app.post('/api/razorpay/verify', (req, res) => {
+	const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+	const body = razorpay_order_id + '|' + razorpay_payment_id;
+	const expectedSignature = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET).update(body).digest('hex');
+	if (expectedSignature === razorpay_signature) return res.status(200).send('ok');
+	return res.status(400).send('invalid signature');
+});
+
+app.listen(3000);
+```
+
+Notes:
+- Ensure server-side credentials (key id & secret) are kept private and never exposed in the frontend.
+- For recurring (monthly) donations, implement server-side subscription management with your payment provider.
+- Send tax-exemption certificates/email receipts from backend after successful payment verification.
+
+Environment variables used by the frontend:
+
+- `VITE_API_BASE` — optional base URL for API calls (e.g. `https://api.example.org`)
+
+Legal pages (privacy, terms, cancellation & refunds) are already present under `src/pages/` and linked in the footer. During checkout the frontend requires users to accept terms; ensure backend records consent if needed for compliance.
+
+

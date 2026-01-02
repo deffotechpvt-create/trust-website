@@ -3,7 +3,7 @@ import { render, cleanup } from '@testing-library/react';
 import App from '@/App';
 
 describe('App routes smoke test', () => {
-  const paths = ['/', '/shipping', '/cancellation-refunds'];
+  const paths = ['/', '/shipping', '/cancellation-refunds', '/donate'];
 
   afterEach(() => cleanup());
 

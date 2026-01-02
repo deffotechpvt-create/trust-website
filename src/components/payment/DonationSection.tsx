@@ -3,10 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Heart, CreditCard, Smartphone, Building2, Gift, Shield, Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from 'react-router-dom';
 
 const DonationSection = () => {
   const [donationAmount, setDonationAmount] = useState("1000");
@@ -15,6 +17,8 @@ const DonationSection = () => {
   const [paymentMethod, setPaymentMethod] = useState("card");
   const { toast } = useToast();
   const [processing, setProcessing] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const navigate = useNavigate();
 
   const predefinedAmounts = [
     { value: "500", label: "₹500", impact: "Supports 1 student's books for a month" },
@@ -55,6 +59,12 @@ const DonationSection = () => {
       const amountPaise = Math.round(amountNumber * 100); // Razorpay expects amount in paise
 
       // 1) Create order on our backend
+      if (!acceptedTerms) {
+        toast({ title: 'Consent Required', description: 'Please accept terms and privacy policy to proceed.', variant: 'destructive' });
+        setProcessing(false);
+        return;
+      }
+
       const resp = await fetch('/api/razorpay/order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -62,6 +72,14 @@ const DonationSection = () => {
       });
 
       if (!resp.ok) {
+        if (resp.status === 404) {
+          // Backend endpoint missing — continue flow to manual payment page
+          toast({ title: 'Backend Unavailable', description: 'Redirecting to payment page to continue.', variant: 'default' });
+          navigate('/payment');
+          setProcessing(false);
+          return;
+        }
+
         const err = await resp.text();
         toast({ title: 'Payment Error', description: err || 'Failed to create payment order', variant: 'destructive' });
         setProcessing(false);
@@ -72,7 +90,8 @@ const DonationSection = () => {
 
       const ok = await loadRazorpayScript();
       if (!ok) {
-        toast({ title: 'Payment Error', description: 'Failed to load Razorpay SDK', variant: 'destructive' });
+        toast({ title: 'Payment SDK Unavailable', description: 'Redirecting to payment page to continue.', variant: 'default' });
+        navigate('/payment');
         setProcessing(false);
         return;
       }
@@ -114,7 +133,8 @@ const DonationSection = () => {
       rzp.open();
     } catch (error) {
       console.error('Donation flow error', error);
-      toast({ title: 'Donation Error', description: 'Something went wrong while processing the donation', variant: 'destructive' });
+      toast({ title: 'Donation Error', description: 'Redirecting to payment page to continue.', variant: 'destructive' });
+      navigate('/payment');
     } finally {
       setProcessing(false);
     }
@@ -250,6 +270,14 @@ const DonationSection = () => {
                 </div>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Terms Acceptance */}
+          <div className="lg:col-span-2 mt-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox id="donation-terms" checked={acceptedTerms} onCheckedChange={(v) => setAcceptedTerms(Boolean(v))} />
+              <Label htmlFor="donation-terms" className="text-sm">I agree to the <a href="/terms" className="text-primary underline">terms</a> and <a href="/privacy" className="text-primary underline">privacy policy</a></Label>
+            </div>
           </div>
 
           {/* Impact & Info Sidebar */}
