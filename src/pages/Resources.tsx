@@ -307,26 +307,7 @@ const Resources = () => {
       </section>
 
       {/* Newsletter Signup */}
-      <section className="py-20 bg-gradient-to-r from-primary to-primary-light text-white">
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="text-4xl font-bold mb-6">Stay Updated</h2>
-          <p className="text-xl text-primary-foreground/90 mb-8 max-w-2xl mx-auto">
-            Subscribe to receive the latest reports, impact studies, and educational resources directly in your inbox.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row gap-4 max-w-lg mx-auto">
-            <Input
-              type="email"
-              placeholder="Enter your email"
-              className="bg-white/10 border-white/20 text-white placeholder:text-white/70"
-            />
-            <Button variant="secondary" size="lg">
-              Subscribe
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-          </div>
-        </div>
-      </section>
+     
     </Layout>
   );
 };
