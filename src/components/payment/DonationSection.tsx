@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Heart, CreditCard, Smartphone, Building2, Gift, Shield, Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from 'react-router-dom';
-
+import { useApi } from '../../lib/api'
 const DonationSection = () => {
   const [donationAmount, setDonationAmount] = useState("1000");
   const [customAmount, setCustomAmount] = useState("");
@@ -19,6 +19,7 @@ const DonationSection = () => {
   const [processing, setProcessing] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const navigate = useNavigate();
+  const { post } = useApi();
 
   const predefinedAmounts = [
     { value: "500", label: "₹500", impact: "Supports 1 student's books for a month" },
@@ -54,47 +55,46 @@ const DonationSection = () => {
         setProcessing(false);
         return;
       }
-
-      const amountNumber = Math.max(1, Number(amountStr));
-      const amountPaise = Math.round(amountNumber * 100); // Razorpay expects amount in paise
-
-      // 1) Create order on our backend
       if (!acceptedTerms) {
         toast({ title: 'Consent Required', description: 'Please accept terms and privacy policy to proceed.', variant: 'destructive' });
         setProcessing(false);
         return;
       }
+      const amountNumber = Math.max(1, Number(amountStr));
+      const amountPaise = Math.round(amountNumber * 100); // Razorpay expects amount in paise
 
-      const resp = await fetch('/api/razorpay/order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: amountPaise, currency: 'INR', donationType, paymentMethod })
+      const sdkLoaded = await loadRazorpayScript();
+      if (!sdkLoaded) {
+        toast({
+          title: 'Payment SDK Unavailable',
+          description: 'Could not load payment gateway. Please try again.',
+          variant: 'destructive'
+        });
+        setProcessing(false);
+        return;
+      }
+
+
+      const response =await post('/razorpay/anonymous/order', { 
+        amount: amountPaise,
+        currency: 'INR',
+        donationType,
+        paymentMethod
       });
+      // Extract data from Axios response
+      const orderData = response.data;
 
-      if (!resp.ok) {
-        if (resp.status === 404) {
-          // Backend endpoint missing — continue flow to manual payment page
-          toast({ title: 'Backend Unavailable', description: 'Redirecting to payment page to continue.', variant: 'default' });
-          navigate('/payment');
-          setProcessing(false);
-          return;
-        }
-
-        const err = await resp.text();
-        toast({ title: 'Payment Error', description: err || 'Failed to create payment order', variant: 'destructive' });
+      if (!orderData || !orderData.success) {
+        toast({
+          title: 'Payment Error',
+          description: orderData?.message || 'Failed to create payment order',
+          variant: 'destructive'
+        });
         setProcessing(false);
         return;
       }
 
-      const { orderId, amount: orderAmount, currency, keyId } = await resp.json();
-
-      const ok = await loadRazorpayScript();
-      if (!ok) {
-        toast({ title: 'Payment SDK Unavailable', description: 'Redirecting to payment page to continue.', variant: 'default' });
-        navigate('/payment');
-        setProcessing(false);
-        return;
-      }
+      const { orderId, amount: orderAmount, currency, keyId } = orderData;
 
       const options = {
         key: keyId,
@@ -106,30 +106,80 @@ const DonationSection = () => {
         handler: async (response: any) => {
           // response: { razorpay_payment_id, razorpay_order_id, razorpay_signature }
           try {
-            const verify = await fetch('/api/razorpay/verify', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(response)
+            // Verify payment using useApi hook
+            const verifyResponse = await  post('/razorpay/anonymous/verify', {
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_signature: response.razorpay_signature
             });
 
-            if (!verify.ok) {
-              const text = await verify.text();
-              toast({ title: 'Verification Failed', description: text || 'Payment could not be verified', variant: 'destructive' });
-            } else {
-              toast({ title: 'Thank You!', description: `Your donation of ₹${amountNumber} was successful.` });
+            const verifyData = verifyResponse.data;
+            if (!verifyData || !verifyData.success) {
+              toast({
+                title: 'Verification Failed',
+                description: verifyData?.message || 'Payment could not be verified',
+                variant: 'destructive'
+              });
+              setProcessing(false);
+              return;
             }
-          } catch (err) {
-            toast({ title: 'Verification Error', description: 'Could not verify payment. We will contact you if needed.', variant: 'destructive' });
+
+            toast({
+              title: 'Thank You!',
+              description: `Your donation of ₹${amountNumber} was successful.`
+            });
+
+            // Navigate to success page
+            navigate("/payment-success", {
+              state: {
+                amount: amountNumber,
+                orderId: response.razorpay_order_id,
+                paymentId: response.razorpay_payment_id,
+                donationType: donationType
+              }
+            });
+          } catch (verifyError) {
+            console.error('Payment verification error:', verifyError);
+            toast({
+              title: 'Verification Error',
+              description: 'Could not verify payment. Please contact support.',
+              variant: 'destructive'
+            });
+          } finally {
+            setProcessing(false);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            toast({
+              title: 'Payment Cancelled',
+              description: 'You cancelled the payment process.',
+              variant: 'default'
+            });
+            setProcessing(false);
           }
         },
         prefill: {
           name: undefined,
           email: undefined
         },
+        notes: {
+          donationType: donationType,
+          paymentMethod: paymentMethod
+        },
         theme: { color: '#2563eb' }
       } as any;
 
       const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', (response: any) => {
+        toast({
+          title: 'Payment Failed',
+          description: response.error.description || 'Payment was not successful. Please try again.',
+          variant: 'destructive'
+        });
+        setProcessing(false);
+      });
+
       rzp.open();
     } catch (error) {
       console.error('Donation flow error', error);
@@ -148,7 +198,7 @@ const DonationSection = () => {
             Make a Difference Today
           </h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Your contribution directly impacts students' lives, providing them with the tools and opportunities 
+            Your contribution directly impacts students' lives, providing them with the tools and opportunities
             they need to succeed in their educational journey.
           </p>
         </div>
@@ -191,11 +241,10 @@ const DonationSection = () => {
                       <button
                         key={amount.value}
                         onClick={() => setDonationAmount(amount.value)}
-                        className={`p-4 rounded-lg border-2 transition-all duration-200 text-center ${
-                          donationAmount === amount.value
-                            ? "border-primary bg-primary/5 text-primary"
-                            : "border-gray-200 hover:border-primary/50 text-gray-700"
-                        }`}
+                        className={`p-4 rounded-lg border-2 transition-all duration-200 text-center ${donationAmount === amount.value
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-gray-200 hover:border-primary/50 text-gray-700"
+                          }`}
                       >
                         <div className="font-bold text-lg">{amount.label}</div>
                         <div className="text-xs text-muted-foreground mt-1">{amount.impact}</div>

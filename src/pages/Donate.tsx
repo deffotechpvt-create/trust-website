@@ -12,6 +12,7 @@ import { Heart, Shield, CreditCard, Users, Smartphone, Building2 } from "lucide-
 import { useSEO } from "@/lib/seo";
 import { useToast } from "@/components/ui/use-toast";
 import { useNavigate } from "react-router-dom";
+import { useApi } from '../lib/api'
 
 const Donate = () => {
   useSEO({ title: 'Donate', description: 'Support ArulEducation Trust with a donation to help students and programs.', image: '/assets/hero-education.jpg' });
@@ -22,9 +23,17 @@ const Donate = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [pincode, setPincode] = useState("");
+  const [pan, setPan] = useState("");
+  const [taxCertificate, setTaxCertificate] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [purpose, setPurpose] = useState("");
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { post } = useApi();
 
   const predefinedAmounts = ["500", "1000", "2500", "5000", "10000"];
 
@@ -43,6 +52,8 @@ const Donate = () => {
   const handleDonate = async () => {
     try {
       setProcessing(true);
+
+      // Validate amount
       const amountStr = customAmount || amount;
       if (!amountStr || amountStr === "0") {
         toast({
@@ -54,7 +65,8 @@ const Donate = () => {
         return;
       }
 
-      if(!name || !email || !phone) {
+      // Validate user information
+      if (!name || !email || !phone) {
         toast({
           title: "Missing Information",
           description: "Please fill in your name, email, and phone number.",
@@ -64,66 +76,139 @@ const Donate = () => {
         return;
       }
 
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        toast({
+          title: "Invalid Email",
+          description: "Please enter a valid email address.",
+          variant: "destructive"
+        });
+        setProcessing(false);
+        return;
+      }
+
+      // Validate phone number (10 digits)
+      const phoneRegex = /^[0-9]{10}$/;
+      if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
+        toast({
+          title: "Invalid Phone",
+          description: "Please enter a valid 10-digit phone number.",
+          variant: "destructive"
+        });
+        setProcessing(false);
+        return;
+      }
+
       const amountNumber = Math.max(1, Number(amountStr));
-      const amountPaise = Math.round(amountNumber * 100); // Razorpay expects amount in paise
+      const amountPaise = Math.round(amountNumber * 100);
 
-      // 1) Create order on our backend
-      const resp = await fetch('/api/razorpay/order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: amountPaise, currency: 'INR', donationType, paymentMethod })
-      });
+      // Load Razorpay SDK first
+      const sdkLoaded = await loadRazorpayScript();
+      if (!sdkLoaded) {
+        toast({
+          title: 'Payment SDK Unavailable',
+          description: 'Could not load payment gateway. Please try again.',
+          variant: 'destructive'
+        });
+        setProcessing(false);
+        return;
+      }
 
-      if (!resp.ok) {
-        // If backend missing (404) or temporarily unavailable, fall back to the manual Payment page
-        if (resp.status === 404) {
-          toast({ title: 'Backend Unavailable', description: 'Redirecting to payment page to continue.', variant: 'default' });
-          navigate('/payment');
-          setProcessing(false);
-          return;
+      // Create order on backend - useApi already returns parsed data
+      const response = await post('/razorpay/order', {
+        amount: amountPaise,
+        purpose,
+        currency: 'INR',
+        donationType,
+        paymentMethod,
+        donorDetails: {
+          name: name,
+          email: email,
+          phone: phone,
+          address: address,
+          city: city,
+          state: state,
+          pincode: pincode,
+          pan: taxCertificate ? pan : null,
+          taxCertificateRequired: taxCertificate
         }
-        const err = await resp.text();
-        toast({ title: 'Payment Error', description: err || 'Failed to create payment order', variant: 'destructive' });
+      });
+      const orderData = response.data;
+
+      if (!orderData || !orderData.success) {
+        toast({
+          title: 'Payment Error',
+          description: orderData?.message || 'Failed to create payment order',
+          variant: 'destructive'
+        });
         setProcessing(false);
         return;
       }
 
-      const { orderId, amount: orderAmount, currency, keyId } = await resp.json();
+      const { orderId, amount: orderAmount, currency, keyId } = orderData;
 
-      const ok = await loadRazorpayScript();
-      if (!ok) {
-        // SDK failed to load; redirect user to manual Payment page as a fallback
-        toast({ title: 'Payment SDK Unavailable', description: 'Redirecting to payment page to continue.', variant: 'default' });
-        navigate('/payment');
-        setProcessing(false);
-        return;
-      }
-
+      // Razorpay options
       const options = {
         key: keyId,
         amount: orderAmount,
         currency: currency || 'INR',
         name: 'Arul Trust',
-        description: 'Donation',
+        description: 'Donation to Arul Trust',
         order_id: orderId,
         handler: async (response: any) => {
-          // response: { razorpay_payment_id, razorpay_order_id, razorpay_signature }
           try {
-            const verify = await fetch('/api/razorpay/verify', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(response)
+            // Verify payment - useApi already returns parsed data
+            const verifyResponse = await post('/razorpay/verify', {
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_signature: response.razorpay_signature
+            });
+            const verifyData = verifyResponse.data;
+            if (!verifyData || !verifyData.success) {
+              toast({
+                title: 'Verification Failed',
+                description: verifyData?.message || 'Payment could not be verified',
+                variant: 'destructive'
+              });
+              setProcessing(false);
+              return;
+            }
+
+            // Success
+            toast({
+              title: 'Thank You!',
+              description: `Your donation of ₹${amountNumber} was successful.`
             });
 
-            if (!verify.ok) {
-              const text = await verify.text();
-              toast({ title: 'Verification Failed', description: text || 'Payment could not be verified', variant: 'destructive' });
-            } else {
-              toast({ title: 'Thank You!', description: `Your donation of ₹${amountNumber} was successful.` });
-              navigate("/payment-success");
-            }
-          } catch (err) {
-            toast({ title: 'Verification Error', description: 'Could not verify payment. We will contact you if needed.', variant: 'destructive' });
+            navigate("/payment-success", {
+              state: {
+                amount: amountNumber,
+                orderId: response.razorpay_order_id,
+                paymentId: response.razorpay_payment_id,
+                donationType: donationType
+              }
+            });
+
+          } catch (verifyError) {
+            console.error('Payment verification error:', verifyError);
+            toast({
+              title: 'Verification Error',
+              description: 'Could not verify payment. Please contact support.',
+              variant: 'destructive'
+            });
+          } finally {
+            setProcessing(false);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            toast({
+              title: 'Payment Cancelled',
+              description: 'You cancelled the payment process.',
+              variant: 'default'
+            });
+            setProcessing(false);
           }
         },
         prefill: {
@@ -131,17 +216,36 @@ const Donate = () => {
           email: email,
           contact: phone
         },
-        theme: { color: '#2563eb' }
+        notes: {
+          donationType: donationType,
+          paymentMethod: paymentMethod
+        },
+        theme: {
+          color: '#2563eb'
+        }
       } as any;
 
+      // Open Razorpay payment modal
       const rzp = new (window as any).Razorpay(options);
+
+      rzp.on('payment.failed', (response: any) => {
+        toast({
+          title: 'Payment Failed',
+          description: response.error.description || 'Payment was not successful. Please try again.',
+          variant: 'destructive'
+        });
+        setProcessing(false);
+      });
+
       rzp.open();
+
     } catch (error) {
-      console.error('Donation flow error', error);
-      // On network/backend errors, redirect to manual payment page so user can continue
-      toast({ title: 'Donation Error', description: 'Redirecting to payment page to continue.', variant: 'destructive' });
-      navigate('/payment');
-    } finally {
+      console.error('Donation flow error:', error);
+      toast({
+        title: 'Donation Error',
+        description: 'An unexpected error occurred. Please try again.',
+        variant: 'destructive'
+      });
       setProcessing(false);
     }
   };
@@ -199,7 +303,7 @@ const Donate = () => {
                   <TabsTrigger value="one-time">One-time Donation</TabsTrigger>
                   <TabsTrigger value="monthly">Monthly Donation</TabsTrigger>
                 </TabsList>
-                
+
                 <TabsContent value="one-time" className="space-y-6">
                   <div>
                     <Label className="text-base font-medium mb-4 block">Select Amount (₹)</Label>
@@ -209,9 +313,8 @@ const Donate = () => {
                           <RadioGroupItem value={amt} id={amt} className="sr-only" />
                           <Label
                             htmlFor={amt}
-                            className={`cursor-pointer border-2 rounded-lg p-4 text-center transition-all hover:border-primary ${
-                              amount === amt && !customAmount ? "border-primary bg-primary/10" : "border-border"
-                            }`}
+                            className={`cursor-pointer border-2 rounded-lg p-4 text-center transition-all hover:border-primary ${amount === amt && !customAmount ? "border-primary bg-primary/10" : "border-border"
+                              }`}
                           >
                             ₹{amt}
                           </Label>
@@ -233,7 +336,7 @@ const Donate = () => {
                     </div>
                   </div>
                 </TabsContent>
-                
+
                 <TabsContent value="monthly" className="space-y-6">
                   <div>
                     <Label className="text-base font-medium mb-4 block">Monthly Amount (₹)</Label>
@@ -243,9 +346,8 @@ const Donate = () => {
                           <RadioGroupItem value={amt} id={`monthly-${amt}`} className="sr-only" />
                           <Label
                             htmlFor={`monthly-${amt}`}
-                            className={`cursor-pointer border-2 rounded-lg p-4 text-center transition-all hover:border-primary ${
-                              amount === amt ? "border-primary bg-primary/10" : "border-border"
-                            }`}
+                            className={`cursor-pointer border-2 rounded-lg p-4 text-center transition-all hover:border-primary ${amount === amt ? "border-primary bg-primary/10" : "border-border"
+                              }`}
                           >
                             ₹{amt}
                           </Label>
@@ -259,7 +361,7 @@ const Donate = () => {
               {/* Purpose Selection */}
               <div className="space-y-4">
                 <Label className="text-base font-medium">Purpose of Donation</Label>
-                <Select>
+                <Select value={purpose} onValueChange={setPurpose}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select purpose" />
                   </SelectTrigger>
@@ -274,8 +376,8 @@ const Donate = () => {
                 </Select>
               </div>
 
-               {/* Payment Method */}
-               <div className="space-y-4 mt-8">
+              {/* Payment Method */}
+              <div className="space-y-4 mt-8">
                 <Label className="text-base font-medium">Payment Method</Label>
                 <Select value={paymentMethod} onValueChange={setPaymentMethod}>
                   <SelectTrigger>
@@ -321,26 +423,41 @@ const Donate = () => {
                     <Input id="phone" placeholder="Enter your phone number" required value={phone} onChange={(e) => setPhone(e.target.value)} />
                   </div>
                 </div>
-                
+
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold">Address Details</h3>
                   <div>
                     <Label htmlFor="address">Address</Label>
-                    <Textarea id="address" placeholder="Enter your address" />
+                    <Textarea
+                      id="address"
+                      placeholder="Enter your address"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="city">City</Label>
-                      <Input id="city" placeholder="City" />
+                      <Input
+                        id="city"
+                        placeholder="City"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                      />
                     </div>
                     <div>
                       <Label htmlFor="pincode">Pincode</Label>
-                      <Input id="pincode" placeholder="Pincode" />
+                      <Input
+                        id="pincode"
+                        placeholder="Pincode"
+                        value={pincode}
+                        onChange={(e) => setPincode(e.target.value)}
+                        maxLength={6}
+                      />
                     </div>
                   </div>
                   <div>
                     <Label htmlFor="state">State</Label>
-                    <Select>
+                    <Select value={state} onValueChange={setState}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select state" />
                       </SelectTrigger>
@@ -370,11 +487,28 @@ const Donate = () => {
               {/* Tax Exemption */}
               <div className="mt-8 p-4 bg-accent/10 rounded-lg">
                 <div className="flex items-center space-x-2 mb-2">
-                  <Checkbox id="tax-exemption" />
+                  <Checkbox
+                    id="tax-exemption"
+                    checked={taxCertificate}
+                    onCheckedChange={(checked) => setTaxCertificate(checked as boolean)}
+                  />
                   <Label htmlFor="tax-exemption" className="text-sm">
                     I would like to receive 80G tax exemption certificate
                   </Label>
                 </div>
+                {taxCertificate && (
+                  <div className="mt-4">
+                    <Label htmlFor="pan">PAN Number (Required for 80G certificate)</Label>
+                    <Input
+                      id="pan"
+                      placeholder="Enter PAN (e.g., ABCDE1234F)"
+                      value={pan}
+                      onChange={(e) => setPan(e.target.value.toUpperCase())}
+                      maxLength={10}
+                      className="mt-2"
+                    />
+                  </div>
+                )}
                 <p className="text-sm text-muted-foreground">
                   Under Section 80G of the Income Tax Act, you can claim deduction for donations made to registered charitable organizations.
                 </p>

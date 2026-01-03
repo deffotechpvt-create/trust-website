@@ -17,6 +17,7 @@ import Transparency from "./pages/Transparency";
 import Shipping from "./pages/Shipping";
 import CancellationRefunds from "./pages/CancellationRefunds";
 import NotFound from "./pages/NotFound";
+import PaymentSuccess from "./pages/PaymentSuccess";
 
 const queryClient = new QueryClient();
 
@@ -43,6 +44,7 @@ const App = () => (
           <Route path="/shipping" element={<Shipping />} />
           <Route path="/cancellation-refunds" element={<CancellationRefunds />} />
           <Route path="/transparency" element={<Transparency />} />
+          <Route path="/payment-success" element={<PaymentSuccess />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
