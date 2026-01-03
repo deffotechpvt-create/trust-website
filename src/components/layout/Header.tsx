@@ -17,6 +17,12 @@ const Header = () => {
     { name: "Contact", href: "/contact" },
   ];
 
+  // Show admin link during development or when explicitly enabled via env
+  const showAdmin = import.meta.env.DEV || import.meta.env.VITE_SHOW_ADMIN === "true";
+  if (showAdmin) {
+    navItems.push({ name: "Admin", href: "/admin" });
+  }
+
   const isActive = (href: string) => location.pathname === href;
 
   return (

@@ -30,6 +30,7 @@ import {
   Filter,
   RefreshCw,
 } from "lucide-react";
+import AdminLogin from "./AdminLogin";
 
 // Mock data for transactions
 const mockTransactions = [
@@ -134,6 +135,16 @@ const Admin = () => {
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [selectedDonor, setSelectedDonor] = useState<any>(null);
+  const [authed, setAuthed] = useState<boolean>(() => sessionStorage.getItem("isAdminAuthed") === "true");
+
+  const handleLogout = () => {
+    sessionStorage.removeItem("isAdminAuthed");
+    setAuthed(false);
+  };
+
+  if (!authed) {
+    return <AdminLogin onAuthSuccess={() => setAuthed(true)} />;
+  }
 
   // Filter transactions
   const filteredTransactions = mockTransactions.filter((txn) => {
@@ -177,8 +188,17 @@ const Admin = () => {
       {/* Header */}
       <div className="bg-gradient-to-r from-trust-navy via-primary to-secondary text-white py-12">
         <div className="container mx-auto px-4">
-          <h1 className="text-4xl lg:text-5xl font-bold mb-2">Admin Dashboard</h1>
-          <p className="text-lg text-white/90">Manage transactions, donors, and certificates</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl lg:text-5xl font-bold mb-2">Admin Dashboard</h1>
+              <p className="text-lg text-white/90">Manage transactions, donors, and certificates</p>
+            </div>
+            <div>
+              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-white">
+                Logout
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 
