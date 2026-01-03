@@ -6,6 +6,8 @@ import heroImage from "@/assets/hero-education.jpg";
 const HeroSection = () => {
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden">
+
+      
       {/* Background Image with Overlay */}
       <div className="absolute inset-0">
         <img

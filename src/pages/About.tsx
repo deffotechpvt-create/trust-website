@@ -27,7 +27,7 @@ const About = () => {
   ];
 
   const milestones = [
-    { year: "2009", event: "ArulEducation Trust established with a vision to transform education" },
+    { year: "1991", event: "ArulEducation Trust established with a vision to transform education" },
     { year: "2012", event: "First 10 schools supported with infrastructure development" },
     { year: "2015", event: "Launched digital literacy program reaching 1,000 students" },
     { year: "2018", event: "Scholarship program initiated, supporting 500 students annually" },
