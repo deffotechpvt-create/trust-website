@@ -19,8 +19,7 @@ const adminSchema = new mongoose.Schema({
   password: {
     type: String,
     required: [true, 'Password is required'],
-    minlength: 6,
-    select: false
+    minlength: 6
   },
   isActive: {
     type: Boolean,
@@ -35,13 +34,6 @@ const adminSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true
-});
-
-// Hash password before saving
-adminSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
 });
 
 // Compare password method

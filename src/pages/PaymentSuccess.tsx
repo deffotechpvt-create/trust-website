@@ -12,7 +12,6 @@ const PaymentSuccess = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [copied, setCopied] = useState(false);
   const paymentData = location.state || {};
 
   const {

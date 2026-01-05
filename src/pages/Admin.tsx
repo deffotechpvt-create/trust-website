@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,110 +24,15 @@ import {
   Eye,
   CheckCircle,
   AlertCircle,
-  TrendingUp,
   Mail,
   Filter,
   RefreshCw,
+  XCircle,
+  X,
 } from "lucide-react";
 import AdminLogin from "./AdminLogin";
-
-// Mock data for transactions
-const mockTransactions = [
-  {
-    id: "TXN001",
-    orderId: "order_1A2B3C",
-    paymentId: "pay_1X2Y3Z",
-    donorName: "Rajesh Kumar",
-    email: "rajesh@example.com",
-    phone: "+91-9876543210",
-    amount: 5000,
-    currency: "INR",
-    status: "verified",
-    paymentMethod: "card",
-    donationType: "one-time",
-    createdAt: "2025-01-02",
-    certificateIssued: true,
-  },
-  {
-    id: "TXN002",
-    orderId: "order_4D5E6F",
-    paymentId: "pay_4A5B6C",
-    donorName: "Priya Singh",
-    email: "priya@example.com",
-    phone: "+91-8765432109",
-    amount: 2500,
-    currency: "INR",
-    status: "pending",
-    paymentMethod: "upi",
-    donationType: "monthly",
-    createdAt: "2025-01-01",
-    certificateIssued: false,
-  },
-  {
-    id: "TXN003",
-    orderId: "order_7G8H9I",
-    paymentId: "pay_7D8E9F",
-    donorName: "Arjun Patel",
-    email: "arjun@example.com",
-    phone: "+91-7654321098",
-    amount: 10000,
-    currency: "INR",
-    status: "verified",
-    paymentMethod: "card",
-    donationType: "one-time",
-    createdAt: "2024-12-31",
-    certificateIssued: true,
-  },
-  {
-    id: "TXN004",
-    orderId: "order_9J0K1L",
-    paymentId: "pay_9G0H1I",
-    donorName: "Sneha Desai",
-    email: "sneha@example.com",
-    phone: "+91-6543210987",
-    amount: 1000,
-    currency: "INR",
-    status: "failed",
-    paymentMethod: "netbanking",
-    donationType: "one-time",
-    createdAt: "2024-12-30",
-    certificateIssued: false,
-  },
-];
-
-// Mock donor data
-const mockDonors = [
-  {
-    id: "DONOR001",
-    name: "Rajesh Kumar",
-    email: "rajesh@example.com",
-    phone: "+91-9876543210",
-    totalDonations: 15000,
-    donationCount: 3,
-    lastDonation: "2025-01-02",
-    status: "active",
-  },
-  {
-    id: "DONOR002",
-    name: "Priya Singh",
-    email: "priya@example.com",
-    phone: "+91-8765432109",
-    totalDonations: 5000,
-    donationCount: 2,
-    lastDonation: "2025-01-01",
-    status: "active",
-  },
-  {
-    id: "DONOR003",
-    name: "Arjun Patel",
-    email: "arjun@example.com",
-    phone: "+91-7654321098",
-    totalDonations: 10000,
-    donationCount: 1,
-    lastDonation: "2024-12-31",
-    status: "active",
-  },
-];
+import { useApi } from "@/lib/api";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const Admin = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -136,39 +40,320 @@ const Admin = () => {
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [selectedDonor, setSelectedDonor] = useState<any>(null);
   const [authed, setAuthed] = useState<boolean>(() => sessionStorage.getItem("isAdminAuthed") === "true");
+  const [activeTab, setActiveTab] = useState("transactions");
+
+  // Pagination states
+  const [transactionPage, setTransactionPage] = useState(1);
+  const [transactionTotalPages, setTransactionTotalPages] = useState(1);
+  const [donorPage, setDonorPage] = useState(1);
+  const [donorTotalPages, setDonorTotalPages] = useState(1);
+
+  // API states
+  const [stats, setStats] = useState<any>(null);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [donors, setDonors] = useState<any[]>([]);
+  const [pendingCerts, setPendingCerts] = useState<any[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [donationTypes, setDonationTypes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<{ message: string; type: string } | null>(null);
+
+  // Loading flags to prevent duplicate calls
+  const [statsLoaded, setStatsLoaded] = useState(false);
+  const [transactionsLoaded, setTransactionsLoaded] = useState(false);
+  const [donorsLoaded, setDonorsLoaded] = useState(false);
+  const [certificatesLoaded, setCertificatesLoaded] = useState(false);
+  const [reportsLoaded, setReportsLoaded] = useState(false);
+
+  const { get, post } = useApi();
+
+  // Fetch dashboard stats (called only once)
+  const fetchStats = async () => {
+    if (statsLoaded) return;
+    try {
+      const response = await get('/admin/stats');
+      if (response.data.success) {
+        setStats(response.data.stats);
+        setStatsLoaded(true);
+      }
+    } catch (err: any) {
+      setError(err);
+      console.error('Stats fetch error:', err);
+    }
+  };
+
+  // Fetch transactions (called when filters change)
+  const fetchTransactions = async () => {
+    try {
+      setLoading(true);
+      const response = await get(`/admin/transactions?status=${filterStatus}&search=${searchTerm}&page=${transactionPage}&limit=10`);
+      if (response.data.success) {
+        setTransactions(response.data.transactions);
+        setTransactionTotalPages(response.data.totalPages);
+        setTransactionsLoaded(true);
+      }
+    } catch (err: any) {
+      setError(err);
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch donors (called when search/page changes)
+  const fetchDonors = async () => {
+    try {
+      setLoading(true);
+      const response = await get(`/admin/donors?search=${searchTerm}&page=${donorPage}&limit=10`);
+      if (response.data.success) {
+        setDonors(response.data.donors);
+        setDonorTotalPages(response.data.totalPages);
+        setDonorsLoaded(true);
+      }
+    } catch (err: any) {
+      setError(err);
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch pending certificates (called only when certificates tab is active)
+  const fetchPendingCertificates = async () => {
+    if (certificatesLoaded) return;
+    try {
+      const response = await get('/admin/certificates/pending');
+      if (response.data.success) {
+        setPendingCerts(response.data.certificates);
+        setCertificatesLoaded(true);
+      }
+    } catch (err: any) {
+      setError(err);
+      console.error('Certificates fetch error:', err);
+    }
+  };
+
+  // Fetch payment methods (called only when reports tab is active)
+  const fetchPaymentMethods = async () => {
+    if (reportsLoaded && paymentMethods.length > 0) return;
+    try {
+      const response = await get('/admin/reports/payment-methods');
+      if (response.data.success) {
+        setPaymentMethods(response.data.breakdown);
+      }
+    } catch (err: any) {
+      setError(err);
+      console.error('Payment methods fetch error:', err);
+    }
+  };
+
+  // Fetch donation types (called only when reports tab is active)
+  const fetchDonationTypes = async () => {
+    if (reportsLoaded && donationTypes.length > 0) return;
+    try {
+      const response = await get('/admin/reports/donation-types');
+      if (response.data.success) {
+        setDonationTypes(response.data.breakdown);
+        setReportsLoaded(true);
+      }
+    } catch (err: any) {
+      setError(err);
+      console.error('Donation types fetch error:', err);
+    }
+  };
+
+  // Fetch donor details
+  const fetchDonorDetails = async (donorId: string) => {
+    try {
+      const response = await get(`/admin/donors/${donorId}`);
+      if (response.data.success) {
+        setSelectedDonor(response.data.donor);
+      }
+    } catch (err: any) {
+      setError(err);
+      console.error('Donor details fetch error:', err);
+    }
+  };
 
   const handleLogout = () => {
     sessionStorage.removeItem("isAdminAuthed");
+    localStorage.removeItem("admin_token");
+    localStorage.removeItem("admin_info");
     setAuthed(false);
+  };
+
+
+  const handleSendReceipt = async (donationId: string) => {
+    if (!donationId) {
+      setError({
+        message: 'Invalid donation ID',
+        type: 'receipt'
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await post(`/email/send-receipt/${donationId}`, {});
+
+      if (response.data.success) {
+        setError({
+          message: response.data.message,
+          type: 'success'
+        });
+
+        // Refresh transactions to update receipt status
+        fetchTransactions();
+      }
+    } catch (err: any) {
+      setError({
+        message: err.response?.data?.message || 'Failed to send receipt',
+        type: 'receipt'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  const handleSendCertificate = async (donationId: string) => {
+    if (!donationId) {
+      setError({
+        message: 'Invalid donation ID',
+        type: 'certificate'
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await post(`/email/send-certificate/${donationId}`, {});
+
+      if (response.data.success) {
+        setError({
+          message: response.data.message,
+          type: 'success'
+        });
+
+        // Refresh transactions and certificates
+        fetchTransactions();
+        setCertificatesLoaded(false);
+        fetchPendingCertificates();
+
+        // Update stats
+        setStatsLoaded(false);
+        fetchStats();
+      }
+    } catch (err: any) {
+      setError({
+        message: err.response?.data?.message || 'Failed to send certificate',
+        type: 'certificate'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+
+  // Refresh all data for current tab
+  const handleRefreshAll = () => {
+    fetchStats();
+    fetchTransactions();
+    fetchDonors();
+    fetchPendingCertificates();
+    fetchPaymentMethods();
+    fetchDonationTypes();
+  };
+
+  // Load initial data - only stats
+  useEffect(() => {
+    if (authed) {
+      fetchStats();
+    }
+  }, [authed]);
+
+  // Load transactions only when transactions tab is active
+  useEffect(() => {
+    if (authed && activeTab === "transactions") {
+      if (!transactionsLoaded) {
+        fetchTransactions();
+      }
+    }
+  }, [authed, activeTab]);
+
+  // Refetch transactions when filter/search/page changes
+  useEffect(() => {
+    if (authed && activeTab === "transactions" && transactionsLoaded) {
+      const timeoutId = setTimeout(() => {
+        fetchTransactions();
+      }, 500); // Debounce search
+      return () => clearTimeout(timeoutId);
+    }
+  }, [filterStatus, searchTerm, transactionPage]);
+
+  // Load donors only when donors tab is active
+  useEffect(() => {
+    if (authed && activeTab === "donors") {
+      if (!donorsLoaded) {
+        fetchDonors();
+      }
+    }
+  }, [authed, activeTab]);
+
+  // Refetch donors when search/page changes
+  useEffect(() => {
+    if (authed && activeTab === "donors" && donorsLoaded) {
+      const timeoutId = setTimeout(() => {
+        fetchDonors();
+      }, 500);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [searchTerm, donorPage]);
+
+  // Load certificates only when certificates tab is active
+  useEffect(() => {
+    if (authed && activeTab === "certificates") {
+      fetchPendingCertificates();
+      // Also fetch transactions for issued certificates section
+      if (!transactionsLoaded) {
+        fetchTransactions();
+      }
+    }
+  }, [authed, activeTab]);
+
+  // Load reports only when reports tab is active
+  useEffect(() => {
+    if (authed && activeTab === "reports") {
+      fetchPaymentMethods();
+      fetchDonationTypes();
+    }
+  }, [authed, activeTab]);
+
+  // Pagination handlers
+  const handleTransactionPageChange = (newPage: number) => {
+    setTransactionPage(newPage);
+  };
+
+  const handleDonorPageChange = (newPage: number) => {
+    setDonorPage(newPage);
   };
 
   if (!authed) {
     return <AdminLogin onAuthSuccess={() => setAuthed(true)} />;
   }
 
-  // Filter transactions
-  const filteredTransactions = mockTransactions.filter((txn) => {
-    const matchesSearch =
-      txn.donorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      txn.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      txn.orderId.includes(searchTerm);
-    const matchesStatus = filterStatus === "all" || txn.status === filterStatus;
-    return matchesSearch && matchesStatus;
-  });
+  // Use API stats
+  const totalRevenue = stats?.totalRevenue || 0;
+  const totalTransactions = stats?.totalTransactions || 0;
+  const verifiedTransactions = stats?.verifiedTransactions || 0;
+  const pendingCertificates = stats?.pendingCertificates || 0;
+  const dailyRevenue = stats?.dailyRevenue || 0;
+  const monthlyRevenue = stats?.monthlyRevenue || 0;
+  const totalDonors = stats?.totalDonors || 0;
 
-  // Filter donors
-  const filteredDonors = mockDonors.filter((donor) =>
-    donor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    donor.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // Calculate statistics
-  const totalRevenue = mockTransactions
-    .filter((t) => t.status === "verified")
-    .reduce((sum, t) => sum + t.amount, 0);
-  const totalTransactions = mockTransactions.length;
-  const verifiedTransactions = mockTransactions.filter((t) => t.status === "verified").length;
-  const pendingCertificates = mockTransactions.filter((t) => t.status === "verified" && !t.certificateIssued).length;
+  const filteredTransactions = transactions;
+  const filteredDonors = donors;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -193,7 +378,11 @@ const Admin = () => {
               <h1 className="text-4xl lg:text-5xl font-bold mb-2">Admin Dashboard</h1>
               <p className="text-lg text-white/90">Manage transactions, donors, and certificates</p>
             </div>
-            <div>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={handleRefreshAll} className="text-white">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Refresh
+              </Button>
               <Button variant="ghost" size="sm" onClick={handleLogout} className="text-white">
                 Logout
               </Button>
@@ -201,6 +390,51 @@ const Admin = () => {
           </div>
         </div>
       </div>
+
+      <div className="container mx-auto ">
+        {/* Error Alert - Center Display with Better Visibility */}
+        {error && (
+          <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-lg px-4">
+            <Alert
+              variant={error.type === 'success' ? 'default' : 'destructive'}
+              className={`shadow-2xl border-2 ${error.type === 'success'
+                ? 'border-green-500 bg-white'
+                : 'border-red-500 bg-white'
+                }`}
+            >
+              {error.type === 'success' ? (
+                <CheckCircle className="h-5 w-5 text-green-600" />
+              ) : (
+                <XCircle className="h-5 w-5 text-red-600" />
+              )}
+              <div className="flex items-start justify-between gap-3 w-full">
+                <div className="flex-1">
+                  <AlertTitle className={`font-bold text-base mb-1 ${error.type === 'success' ? 'text-green-900' : 'text-red-900'
+                    }`}>
+                    {error.type === 'success' ? 'Success' : 'Error'}
+                  </AlertTitle>
+                  <AlertDescription className={`text-sm font-medium ${error.type === 'success' ? 'text-green-700' : 'text-red-700'
+                    }`}>
+                    {error.message}
+                  </AlertDescription>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-7 w-7 p-0 rounded-full flex-shrink-0 ${error.type === 'success' ? 'hover:bg-green-100' : 'hover:bg-red-100'
+                    }`}
+                  onClick={() => setError(null)}
+                >
+                  <X className={`h-4 w-4 ${error.type === 'success' ? 'text-green-600' : 'text-red-600'
+                    }`} />
+                </Button>
+              </div>
+            </Alert>
+          </div>
+        )}
+      </div>
+      {/* Statistics Cards */}
+
 
       <div className="container mx-auto px-4 py-12">
         {/* Statistics Cards */}
@@ -210,7 +444,9 @@ const Admin = () => {
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-primary">₹{totalRevenue.toLocaleString()}</div>
+              <div className="text-3xl font-bold text-primary">
+                {statsLoaded ? `₹${totalRevenue.toLocaleString()}` : "..."}
+              </div>
               <p className="text-xs text-muted-foreground mt-2">From verified transactions</p>
             </CardContent>
           </Card>
@@ -230,7 +466,7 @@ const Admin = () => {
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Donors</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-accent">{mockDonors.length}</div>
+              <div className="text-3xl font-bold text-accent">{totalDonors}</div>
               <p className="text-xs text-muted-foreground mt-2">Active donors</p>
             </CardContent>
           </Card>
@@ -247,7 +483,7 @@ const Admin = () => {
         </div>
 
         {/* Tabs Navigation */}
-        <Tabs defaultValue="transactions" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-4 lg:w-auto">
             <TabsTrigger value="transactions" className="flex items-center gap-2">
               <CreditCard className="w-4 h-4" />
@@ -315,29 +551,85 @@ const Admin = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredTransactions.map((transaction) => (
-                        <TableRow key={transaction.id} className="hover:bg-muted/50 cursor-pointer">
-                          <TableCell className="font-mono text-sm">{transaction.orderId}</TableCell>
-                          <TableCell className="font-medium">{transaction.donorName}</TableCell>
-                          <TableCell className="font-semibold text-primary">₹{transaction.amount}</TableCell>
-                          <TableCell>{getStatusBadge(transaction.status)}</TableCell>
-                          <TableCell className="text-sm capitalize">{transaction.paymentMethod}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{transaction.createdAt}</TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setSelectedTransaction(transaction)}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
+                      {filteredTransactions.length > 0 ? (
+                        filteredTransactions.map((transaction) => (
+                          <TableRow key={transaction.id} className="hover:bg-muted/50 cursor-pointer">
+                            <TableCell className="font-mono text-sm">{transaction.orderId}</TableCell>
+                            <TableCell className="font-medium">{transaction.donorName}</TableCell>
+                            <TableCell className="font-semibold text-primary">₹{transaction.amount?.toLocaleString()}</TableCell>
+                            <TableCell>{getStatusBadge(transaction.status)}</TableCell>
+                            <TableCell className="text-sm capitalize">{transaction.paymentMethod}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {new Date(transaction.createdAt).toLocaleDateString('en-IN')}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setSelectedTransaction(transaction)}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center text-muted-foreground">
+                            {loading ? "Loading..." : "No transactions found"}
                           </TableCell>
                         </TableRow>
-                      ))}
+                      )}
                     </TableBody>
                   </Table>
                 </ScrollArea>
 
+                {/* Pagination */}
+                {transactionTotalPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 mt-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleTransactionPageChange(transactionPage - 1)}
+                      disabled={transactionPage === 1 || loading}
+                    >
+                      Previous
+                    </Button>
+
+                    {Array.from({ length: Math.min(transactionTotalPages, 5) }, (_, i) => {
+                      let page;
+                      if (transactionTotalPages <= 5) {
+                        page = i + 1;
+                      } else if (transactionPage <= 3) {
+                        page = i + 1;
+                      } else if (transactionPage >= transactionTotalPages - 2) {
+                        page = transactionTotalPages - 4 + i;
+                      } else {
+                        page = transactionPage - 2 + i;
+                      }
+                      return (
+                        <Button
+                          key={page}
+                          variant={page === transactionPage ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleTransactionPageChange(page)}
+                          disabled={loading}
+                        >
+                          {page}
+                        </Button>
+                      );
+                    })}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleTransactionPageChange(transactionPage + 1)}
+                      disabled={transactionPage === transactionTotalPages || loading}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
                 {/* Transaction Details Modal */}
                 {selectedTransaction && (
                   <div className="mt-6 p-6 border rounded-lg bg-muted/30">
@@ -358,7 +650,7 @@ const Admin = () => {
                       </div>
                       <div>
                         <p className="text-muted-foreground">Payment ID</p>
-                        <p className="font-mono font-semibold">{selectedTransaction.paymentId}</p>
+                        <p className="font-mono font-semibold">{selectedTransaction.paymentId || 'N/A'}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Donor Name</p>
@@ -374,7 +666,7 @@ const Admin = () => {
                       </div>
                       <div>
                         <p className="text-muted-foreground">Amount</p>
-                        <p className="font-semibold text-primary">₹{selectedTransaction.amount}</p>
+                        <p className="font-semibold text-primary">₹{selectedTransaction.amount?.toLocaleString()}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Status</p>
@@ -383,29 +675,54 @@ const Admin = () => {
                       <div>
                         <p className="text-muted-foreground">Certificate Issued</p>
                         <p className="font-semibold">
-                          {selectedTransaction.certificateIssued ? (
+                          {selectedTransaction.taxCertificateIssued ? (
                             <CheckCircle className="w-5 h-5 text-green-600 inline" />
                           ) : (
                             <AlertCircle className="w-5 h-5 text-yellow-600 inline" />
                           )}
-                          {selectedTransaction.certificateIssued ? " Yes" : " No"}
+                          {selectedTransaction.taxCertificateIssued ? " Yes" : " No"}
                         </p>
                       </div>
+                      {selectedTransaction.taxCertificateNumber && (
+                        <div className="col-span-2">
+                          <p className="text-muted-foreground">Certificate Number</p>
+                          <p className="font-mono font-semibold text-green-600">
+                            {selectedTransaction.taxCertificateNumber}
+                          </p>
+                        </div>
+                      )}
                     </div>
+
+                    {/* Buttons Section */}
                     <div className="mt-4 flex gap-2">
-                      <Button className="gap-2" size="sm">
+                      <Button
+                        className="gap-2"
+                        size="sm"
+                        onClick={() => handleSendReceipt(selectedTransaction.id)}
+                        disabled={loading}
+                      >
                         <Mail className="w-4 h-4" />
-                        Send Receipt
+                        {selectedTransaction.receiptSent ? 'Resend Receipt' : 'Send Receipt'}
                       </Button>
-                      {selectedTransaction.status === "verified" && !selectedTransaction.certificateIssued && (
-                        <Button variant="outline" size="sm" className="gap-2">
+
+                      {selectedTransaction.status === "verified" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => handleSendCertificate(selectedTransaction.id)}
+                          disabled={loading}
+                        >
                           <FileText className="w-4 h-4" />
-                          Generate Certificate
+                          {selectedTransaction.taxCertificateIssued
+                            ? 'Resend Certificate'
+                            : 'Generate & Send Certificate'}
                         </Button>
                       )}
                     </div>
                   </div>
                 )}
+
               </CardContent>
             </Card>
           </TabsContent>
@@ -443,27 +760,64 @@ const Admin = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredDonors.map((donor) => (
-                        <TableRow key={donor.id} className="hover:bg-muted/50">
-                          <TableCell className="font-medium">{donor.name}</TableCell>
-                          <TableCell className="text-sm">{donor.email}</TableCell>
-                          <TableCell className="font-semibold text-secondary">₹{donor.totalDonations.toLocaleString()}</TableCell>
-                          <TableCell className="text-center">{donor.donationCount}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{donor.lastDonation}</TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setSelectedDonor(donor)}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
+                      {filteredDonors.length > 0 ? (
+                        filteredDonors.map((donor) => (
+                          <TableRow key={donor.id} className="hover:bg-muted/50">
+                            <TableCell className="font-medium">{donor.name}</TableCell>
+                            <TableCell className="text-sm">{donor.email}</TableCell>
+                            <TableCell className="font-semibold text-secondary">₹{donor.totalDonations?.toLocaleString()}</TableCell>
+                            <TableCell className="text-center">{donor.donationCount}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {new Date(donor.lastDonation).toLocaleDateString('en-IN')}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => fetchDonorDetails(donor.id)}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground">
+                            {loading ? "Loading..." : "No donors found"}
                           </TableCell>
                         </TableRow>
-                      ))}
+                      )}
                     </TableBody>
                   </Table>
                 </ScrollArea>
+
+                {/* Pagination */}
+                {donorTotalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4">
+                    <p className="text-sm text-muted-foreground">
+                      Page {donorPage} of {donorTotalPages}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDonorPageChange(donorPage - 1)}
+                        disabled={donorPage === 1 || loading}
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDonorPageChange(donorPage + 1)}
+                        disabled={donorPage === donorTotalPages || loading}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Donor Details Modal */}
                 {selectedDonor && (
@@ -493,11 +847,11 @@ const Admin = () => {
                       </div>
                       <div>
                         <p className="text-muted-foreground">Status</p>
-                        <Badge className="bg-green-600 capitalize">{selectedDonor.status}</Badge>
+                        <Badge className="bg-green-600 capitalize">{selectedDonor.status || 'active'}</Badge>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Total Contributions</p>
-                        <p className="text-2xl font-bold text-secondary">₹{selectedDonor.totalDonations.toLocaleString()}</p>
+                        <p className="text-2xl font-bold text-secondary">₹{selectedDonor.totalDonations?.toLocaleString()}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Donation Count</p>
@@ -528,58 +882,73 @@ const Admin = () => {
                 <CardDescription>Generate and manage tax-exemption certificates</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Pending Certificates */}
+                {/* Donations Eligible for Certificates */}
                 <div>
-                  <h3 className="text-lg font-semibold mb-4">Pending Certificates ({pendingCertificates})</h3>
+                  <h3 className="text-lg font-semibold mb-4">
+                    All Verified Donations ({pendingCerts.length})
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {mockTransactions
-                      .filter((t) => t.status === "verified" && !t.certificateIssued)
-                      .map((transaction) => (
-                        <Card key={transaction.id} className="bg-orange-50/50 border-orange-200">
+                    {pendingCerts.length > 0 ? (
+                      pendingCerts.map((cert) => (
+                        <Card
+                          key={cert.id}
+                          className={cert.taxCertificateIssued
+                            ? "bg-green-50/50 border-green-200"
+                            : "bg-orange-50/50 border-orange-200"}
+                        >
                           <CardContent className="pt-6">
                             <div className="space-y-2 mb-4">
-                              <p className="text-sm text-muted-foreground">Donor</p>
-                              <p className="font-semibold">{transaction.donorName}</p>
-                              <p className="text-sm text-muted-foreground">{transaction.email}</p>
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm text-muted-foreground">Donor</p>
+                                {cert.taxCertificateIssued && (
+                                  <Badge className="bg-green-600">
+                                    <CheckCircle className="w-3 h-3 mr-1" />
+                                    Issued
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="font-semibold">{cert.donorName}</p>
+                              <p className="text-sm text-muted-foreground">{cert.email}</p>
                             </div>
                             <div className="space-y-2 mb-4">
                               <p className="text-sm text-muted-foreground">Amount</p>
-                              <p className="text-2xl font-bold text-secondary">₹{transaction.amount}</p>
+                              <p className="text-2xl font-bold text-secondary">₹{cert.amount?.toLocaleString()}</p>
+                              {cert.taxCertificateNumber && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Cert #: {cert.taxCertificateNumber}
+                                </p>
+                              )}
                             </div>
                             <div className="flex gap-2">
-                              <Button className="flex-1" size="sm" variant="default">
+                              <Button
+                                className="flex-1"
+                                size="sm"
+                                variant="default"
+                                onClick={() => handleSendCertificate(cert.id)}
+                                disabled={loading}
+                              >
                                 <FileText className="w-4 h-4 mr-2" />
-                                Generate & Email
+                                {cert.taxCertificateIssued ? 'Resend Certificate' : 'Generate & send Certificate'}
                               </Button>
-                              <Button className="flex-1" size="sm" variant="outline">
-                                <Download className="w-4 h-4 mr-2" />
-                                Download
+                              <Button
+                                className="flex-1"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleSendReceipt(cert.id)}
+                                disabled={loading}
+                              >
+                                <Mail className="w-4 h-4 mr-2" />
+                                {cert.receiptSent ? 'Resend Receipt' : 'Send Receipt'}
                               </Button>
                             </div>
                           </CardContent>
                         </Card>
-                      ))}
-                  </div>
-                </div>
-
-                {/* Issued Certificates */}
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">Issued Certificates</h3>
-                  <div className="space-y-2">
-                    {mockTransactions
-                      .filter((t) => t.certificateIssued)
-                      .map((transaction) => (
-                        <div
-                          key={transaction.id}
-                          className="flex items-center justify-between p-4 border rounded-lg bg-green-50/50 border-green-200"
-                        >
-                          <div>
-                            <p className="font-semibold">{transaction.donorName}</p>
-                            <p className="text-sm text-muted-foreground">₹{transaction.amount} • {transaction.createdAt}</p>
-                          </div>
-                          <CheckCircle className="w-5 h-5 text-green-600" />
-                        </div>
-                      ))}
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground col-span-2">
+                        {loading ? "Loading..." : "No verified donations found"}
+                      </p>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -599,7 +968,7 @@ const Admin = () => {
                   <Card className="bg-gradient-to-br from-primary/10 to-primary/5">
                     <CardContent className="pt-6">
                       <div className="text-sm text-muted-foreground mb-2">Daily Revenue</div>
-                      <p className="text-2xl font-bold text-primary">₹5,000</p>
+                      <p className="text-2xl font-bold text-primary">₹{dailyRevenue.toLocaleString()}</p>
                       <p className="text-xs text-muted-foreground mt-2">Today's transactions</p>
                     </CardContent>
                   </Card>
@@ -607,7 +976,7 @@ const Admin = () => {
                   <Card className="bg-gradient-to-br from-secondary/10 to-secondary/5">
                     <CardContent className="pt-6">
                       <div className="text-sm text-muted-foreground mb-2">Monthly Revenue</div>
-                      <p className="text-2xl font-bold text-secondary">₹45,000</p>
+                      <p className="text-2xl font-bold text-secondary">₹{monthlyRevenue.toLocaleString()}</p>
                       <p className="text-xs text-muted-foreground mt-2">This month</p>
                     </CardContent>
                   </Card>
@@ -615,37 +984,36 @@ const Admin = () => {
                   <Card className="bg-gradient-to-br from-accent/10 to-accent/5">
                     <CardContent className="pt-6">
                       <div className="text-sm text-muted-foreground mb-2">Total Revenue (YTD)</div>
-                      <p className="text-2xl font-bold text-accent">₹128,000</p>
+                      <p className="text-2xl font-bold text-accent">₹{totalRevenue.toLocaleString()}</p>
                       <p className="text-xs text-muted-foreground mt-2">Year to date</p>
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* Donation Methods Breakdown */}
+                {/* Payment Methods Breakdown */}
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Payment Methods Breakdown</h3>
                   <div className="space-y-3">
-                    {[
-                      { method: "Credit/Debit Card", count: 18, amount: 62500, percentage: 48 },
-                      { method: "UPI", count: 12, amount: 38000, percentage: 30 },
-                      { method: "Net Banking", count: 8, amount: 25000, percentage: 19 },
-                      { method: "Wallet", count: 2, amount: 2500, percentage: 2 },
-                    ].map((item) => (
-                      <div key={item.method} className="space-y-2">
-                        <div className="flex justify-between">
-                          <p className="font-medium">{item.method}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {item.count} transactions • ₹{item.amount.toLocaleString()}
-                          </p>
+                    {paymentMethods.length > 0 ? (
+                      paymentMethods.map((item) => (
+                        <div key={item.method} className="space-y-2">
+                          <div className="flex justify-between">
+                            <p className="font-medium capitalize">{item.method}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {item.count} transactions • ₹{item.amount?.toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-2">
+                            <div
+                              className="bg-gradient-to-r from-primary to-secondary h-2 rounded-full"
+                              style={{ width: `${item.percentage}%` }}
+                            ></div>
+                          </div>
                         </div>
-                        <div className="w-full bg-muted rounded-full h-2">
-                          <div
-                            className="bg-gradient-to-r from-primary to-secondary h-2 rounded-full"
-                            style={{ width: `${item.percentage}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground">Loading payment data...</p>
+                    )}
                   </div>
                 </div>
 
@@ -653,20 +1021,19 @@ const Admin = () => {
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Donation Types</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Card>
-                      <CardContent className="pt-6">
-                        <p className="text-sm text-muted-foreground mb-2">One-Time Donations</p>
-                        <p className="text-3xl font-bold text-primary">28</p>
-                        <p className="text-sm text-secondary font-semibold mt-2">₹95,000 total</p>
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardContent className="pt-6">
-                        <p className="text-sm text-muted-foreground mb-2">Monthly Recurring</p>
-                        <p className="text-3xl font-bold text-accent">12</p>
-                        <p className="text-sm text-secondary font-semibold mt-2">₹33,000 total</p>
-                      </CardContent>
-                    </Card>
+                    {donationTypes.length > 0 ? (
+                      donationTypes.map((item) => (
+                        <Card key={item.type}>
+                          <CardContent className="pt-6">
+                            <p className="text-sm text-muted-foreground mb-2 capitalize">{item.type} Donations</p>
+                            <p className="text-3xl font-bold text-primary">{item.count}</p>
+                            <p className="text-sm text-secondary font-semibold mt-2">₹{item.amount?.toLocaleString()} total</p>
+                          </CardContent>
+                        </Card>
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground col-span-2">Loading donation types...</p>
+                    )}
                   </div>
                 </div>
 
@@ -679,10 +1046,6 @@ const Admin = () => {
                   <Button variant="outline" className="gap-2">
                     <Download className="w-4 h-4" />
                     Export to PDF
-                  </Button>
-                  <Button variant="outline" className="gap-2">
-                    <RefreshCw className="w-4 h-4" />
-                    Refresh Data
                   </Button>
                 </div>
               </CardContent>

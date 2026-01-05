@@ -1,12 +1,12 @@
 // middleware/auth.js
 const jwt = require('jsonwebtoken');
-const Admin = require('../models/Admin');
+const Admin = require('../model/Admin'); // Fixed: model not models
 
 // Verify Admin Token
 exports.verifyAdmin = async (req, res, next) => {
   try {
     // Get token from header
-    const token = req.headers.authorization?.split(' ')[1] || req.cookies.token;
+    const token = req.headers.authorization?.split(' ')[1] || req.cookies?.token;
     
     if (!token) {
       return res.status(401).json({

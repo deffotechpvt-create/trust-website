@@ -4,23 +4,48 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useApi } from '@/lib/api'; // or wherever your useApi is located
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { post } = useApi();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const raw = localStorage.getItem("users") || "[]";
-    const users = JSON.parse(raw) as Array<{ email: string; password: string }>;
-    const user = users.find((u) => u.email === email && u.password === password);
-    if (user) {
-      sessionStorage.setItem("isUserAuthed", "true");
-      navigate("/");
-    } else {
-      setError("Invalid email or password");
+    setError("");
+    setLoading(true);
+
+    try {
+      const response = await post('/auth/login', {
+        email,
+        password
+      });
+
+      const data = response.data;
+
+      if (data.success && data.token) {
+        // Save token and admin info
+        localStorage.setItem("admin_token", data.token);
+        localStorage.setItem("admin_info", JSON.stringify(data.admin));
+
+        // Set session
+        sessionStorage.setItem("isAdminAuthed", "true");
+
+        // Navigate to admin dashboard
+        navigate("/admin");
+      } else {
+        setError("Login failed. Please try again.");
+      }
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || "Invalid email or password";
+      setError(errorMessage);
+      console.error("Login error:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -43,7 +68,13 @@ const Login = () => {
             </div>
             {error && <div className="text-sm text-red-600">{error}</div>}
             <div className="flex justify-between items-center">
-              <Button type="submit">Sign in</Button>
+              <Button
+                type="submit"
+                disabled={loading}
+              >
+                {loading ? "Logging in..." : "Login"}
+              </Button>
+
               <Button variant="link" onClick={() => navigate('/signup')}>Create account</Button>
             </div>
           </form>
