@@ -1,0 +1,664 @@
+{
+    "info": {
+        "name": "Arul Trust - Backend API",
+        "description": "Complete API collection for Arul Trust donation system with auto token management",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        "_exporter_id": "12345678"
+    },
+    "item": [
+        {
+            "name": "Auth Routes",
+            "item": [
+                {
+                    "name": "Admin Login",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "var jsonData = pm.response.json();",
+                                    "",
+                                    "if (jsonData.success && jsonData.token) {",
+                                    "    pm.collectionVariables.set(\"admin_token\", jsonData.token);",
+                                    "    pm.collectionVariables.set(\"admin_id\", jsonData.admin.id);",
+                                    "    pm.collectionVariables.set(\"admin_email\", jsonData.admin.email);",
+                                    "    pm.collectionVariables.set(\"admin_name\", jsonData.admin.name);",
+                                    "    ",
+                                    "    pm.test(\"Login successful\", function () {",
+                                    "        pm.expect(jsonData.success).to.be.true;",
+                                    "        pm.expect(jsonData.token).to.be.a('string');",
+                                    "    });",
+                                    "    ",
+                                    "    console.log(\"✅ Token saved automatically: \" + jsonData.token.substring(0, 20) + \"...\");",
+                                    "} else {",
+                                    "    pm.test(\"Login failed\", function () {",
+                                    "        pm.expect.fail(\"Login was not successful\");",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"admin@gmail.com\",\n  \"password\": \"Test@123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/auth/login",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "auth", "login"]
+                        },
+                        "description": "Login with admin credentials - Token will be saved automatically"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Change Password",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "var jsonData = pm.response.json();",
+                                    "pm.test(\"Password changed successfully\", function () {",
+                                    "    pm.expect(jsonData.success).to.be.true;",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"currentPassword\": \"Test@123\",\n  \"newPassword\": \"NewPassword@123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/auth/change-password",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "auth", "change-password"]
+                        },
+                        "description": "Change admin password (uses auto-saved token)"
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Razorpay - Registered Donor",
+            "item": [
+                {
+                    "name": "Create Order (With Donor Details)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "var jsonData = pm.response.json();",
+                                    "",
+                                    "if (jsonData.success && jsonData.orderId) {",
+                                    "    pm.collectionVariables.set(\"last_order_id\", jsonData.orderId);",
+                                    "    pm.collectionVariables.set(\"last_order_amount\", jsonData.amount);",
+                                    "    ",
+                                    "    pm.test(\"Order created successfully\", function () {",
+                                    "        pm.expect(jsonData.success).to.be.true;",
+                                    "        pm.expect(jsonData.orderId).to.be.a('string');",
+                                    "    });",
+                                    "    ",
+                                    "    console.log(\"✅ Order created: \" + jsonData.orderId);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"amount\": 100000,\n  \"currency\": \"INR\",\n  \"donationType\": \"one-time\",\n  \"purpose\": \"education\",\n  \"paymentMethod\": \"upi\",\n  \"donorDetails\": {\n    \"name\": \"John Doe\",\n    \"email\": \"john@example.com\",\n    \"phone\": \"9876543210\",\n    \"address\": \"123 Main Street\",\n    \"city\": \"Mumbai\",\n    \"state\": \"Maharashtra\",\n    \"pincode\": \"400001\",\n    \"pan\": \"ABCDE1234F\",\n    \"taxCertificateRequired\": true\n  }\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/razorpay/order",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "razorpay", "order"]
+                        },
+                        "description": "Create order - Order ID will be saved automatically"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Verify Payment (With Donor)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "var jsonData = pm.response.json();",
+                                    "",
+                                    "pm.test(\"Payment verified successfully\", function () {",
+                                    "    pm.expect(jsonData.success).to.be.true;",
+                                    "});",
+                                    "",
+                                    "if (jsonData.success && jsonData.donation) {",
+                                    "    console.log(\"✅ Payment verified for order: \" + jsonData.donation.orderId);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"razorpay_order_id\": \"{{last_order_id}}\",\n  \"razorpay_payment_id\": \"pay_yyyyyyyyyyyyy\",\n  \"razorpay_signature\": \"generated_signature_here\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/razorpay/verify",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "razorpay", "verify"]
+                        },
+                        "description": "Verify payment (uses auto-saved order_id)"
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Razorpay - Anonymous Donor",
+            "item": [
+                {
+                    "name": "Create Anonymous Order",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "var jsonData = pm.response.json();",
+                                    "",
+                                    "if (jsonData.success && jsonData.orderId) {",
+                                    "    pm.collectionVariables.set(\"last_anonymous_order_id\", jsonData.orderId);",
+                                    "    ",
+                                    "    pm.test(\"Anonymous order created\", function () {",
+                                    "        pm.expect(jsonData.success).to.be.true;",
+                                    "    });",
+                                    "    ",
+                                    "    console.log(\"✅ Anonymous order: \" + jsonData.orderId);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"amount\": 50000,\n  \"currency\": \"INR\",\n  \"donationType\": \"one-time\",\n  \"paymentMethod\": \"card\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/razorpay/anonymous/order",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "razorpay", "anonymous", "order"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Verify Anonymous Payment",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Anonymous payment verified\", function () {",
+                                    "    var jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.success).to.be.true;",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"razorpay_order_id\": \"{{last_anonymous_order_id}}\",\n  \"razorpay_payment_id\": \"pay_yyyyyyyyyyyyy\",\n  \"razorpay_signature\": \"generated_signature_here\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/razorpay/anonymous/verify",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "razorpay", "anonymous", "verify"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Admin Routes",
+            "item": [
+                {
+                    "name": "Get Dashboard Stats",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/stats",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "admin", "stats"]
+                        }
+                    }
+                },
+                {
+                    "name": "Get All Transactions",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/transactions?page=1&limit=10&status=all&search=",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "admin", "transactions"],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "all"
+                                },
+                                {
+                                    "key": "search",
+                                    "value": ""
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get All Donors",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/donors?page=1&limit=10",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "admin", "donors"],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Donor Details",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/donors/:donorId",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "admin", "donors", ":donorId"],
+                            "variable": [
+                                {
+                                    "key": "donorId",
+                                    "value": ""
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Pending Certificates",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/certificates/pending",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "admin", "certificates", "pending"]
+                        }
+                    }
+                },
+                {
+                    "name": "Payment Methods Report",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/reports/payment-methods",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "admin", "reports", "payment-methods"]
+                        }
+                    }
+                },
+                {
+                    "name": "Donation Types Report",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/reports/donation-types",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "admin", "reports", "donation-types"]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Email Routes",
+            "item": [
+                {
+                    "name": "Send Receipt",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Receipt sent successfully\", function () {",
+                                    "    var jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.success).to.be.true;",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/email/send-receipt/:donationId",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "email", "send-receipt", ":donationId"],
+                            "variable": [
+                                {
+                                    "key": "donationId",
+                                    "value": ""
+                                }
+                            ]
+                        },
+                        "description": "Send payment receipt to donor for a specific donation"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Send Tax Certificate",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Certificate sent successfully\", function () {",
+                                    "    var jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.success).to.be.true;",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/email/send-certificate/:donationId",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "email", "send-certificate", ":donationId"],
+                            "variable": [
+                                {
+                                    "key": "donationId",
+                                    "value": ""
+                                }
+                            ]
+                        },
+                        "description": "Generate and send 80G tax certificate to donor"
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Health Check",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test(\"Server is running\", function () {",
+                            "    pm.response.to.have.status(200);",
+                            "    var jsonData = pm.response.json();",
+                            "    pm.expect(jsonData.success).to.be.true;",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/api/health",
+                    "host": ["{{base_url}}"],
+                    "path": ["api", "health"]
+                }
+            },
+            "response": []
+        }
+    ],
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "console.log(\"🚀 Request: \" + pm.request.method + \" \" + pm.request.url);"
+                ]
+            }
+        },
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "console.log(\"📊 Response Status: \" + pm.response.code);"
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:4242",
+            "type": "string"
+        },
+        {
+            "key": "admin_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "admin_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "admin_email",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "admin_name",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "last_order_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "last_order_amount",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "last_anonymous_order_id",
+            "value": "",
+            "type": "string"
+        }
+    ]
+}

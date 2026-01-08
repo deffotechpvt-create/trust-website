@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const Admin = require('../models/Admin');
+const Admin = require('../model/Admin');
 const { verifyAdmin } = require('../middleware/auth');
 
 // Generate JWT Token
@@ -31,7 +31,7 @@ router.post('/login', async (req, res) => {
     }
 
     // Find admin with password
-    const admin = await Admin.findOne({ email }).select('+password');
+    const admin = await Admin.findOne({ email: email.toLowerCase() }).select('+password');
     
     if (!admin || !admin.isActive) {
       return res.status(401).json({
@@ -52,7 +52,7 @@ router.post('/login', async (req, res) => {
 
     // Update last login
     admin.lastLogin = new Date();
-    await admin.save();
+    await admin.save({ validateBeforeSave: false });
 
     // Generate token
     const token = generateToken(admin);
@@ -64,32 +64,18 @@ router.post('/login', async (req, res) => {
       admin: {
         id: admin._id,
         name: admin.name,
-        email: admin.email
+        email: admin.email,
+        lastLogin: admin.lastLogin
       }
     });
   } catch (error) {
+    console.error('Login error:', error);
     res.status(500).json({
       success: false,
       message: 'Login failed',
       error: error.message
     });
   }
-});
-
-// Get Current Admin
-router.get('/me', verifyAdmin, async (req, res) => {
-  res.status(200).json({
-    success: true,
-    admin: req.admin
-  });
-});
-
-// Logout
-router.post('/logout', verifyAdmin, (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: 'Logged out successfully'
-  });
 });
 
 // Change Password
@@ -100,11 +86,25 @@ router.put('/change-password', verifyAdmin, async (req, res) => {
     if (!currentPassword || !newPassword) {
       return res.status(400).json({
         success: false,
-        message: 'Current and new password required'
+        message: 'Current and new password are required'
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters'
       });
     }
 
     const admin = await Admin.findById(req.admin._id).select('+password');
+    
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: 'Admin not found'
+      });
+    }
     
     const isValid = await admin.comparePassword(currentPassword);
     if (!isValid) {
@@ -114,17 +114,21 @@ router.put('/change-password', verifyAdmin, async (req, res) => {
       });
     }
 
-    admin.password = newPassword;
-    await admin.save();
+    // Hash new password
+    const bcrypt = require('bcryptjs');
+    admin.password = await bcrypt.hash(newPassword, 12);
+    await admin.save({ validateBeforeSave: false });
 
     res.status(200).json({
       success: true,
       message: 'Password changed successfully'
     });
   } catch (error) {
+    console.error('Password change error:', error);
     res.status(500).json({
       success: false,
-      message: 'Password change failed'
+      message: 'Password change failed',
+      error: error.message
     });
   }
 });

@@ -20,7 +20,7 @@ const api = axios.create({
 
 // ✅ Attach JWT token from localStorage
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("auth_token"); // JWT token
+  const token = localStorage.getItem("admin_token"); // JWT token
   if (token) config.headers['Authorization'] = `Bearer ${token}`;
   return config;
 });
